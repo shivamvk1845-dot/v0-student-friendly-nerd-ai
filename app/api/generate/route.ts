@@ -90,19 +90,38 @@ Create a concise 2-4 sentence summary, a comprehensive 3-5 paragraph explanation
 
     const google = createGoogleGenerativeAI({ apiKey })
     const { output } = await generateText({
-      model: google("gemini-3.6-flash"),
+      model: google("gemini-3.5-flash-lite"),
       system: systemPrompt,
       prompt: `Teach me about: ${topic}`,
       temperature: 0.7,
+      maxRetries: 1,
       output: Output.object({ schema: studyMaterialsSchema }),
     })
 
     return Response.json(output)
   } catch (error) {
+    const errorDetails = getErrorDetails(error)
+    const detailsForClassification = JSON.stringify(errorDetails)
+    const isTemporaryAvailabilityError =
+      /high demand|overload|temporar(?:y|ily)|unavailable|resource exhausted|\b(?:429|503)\b/i.test(
+        detailsForClassification,
+      )
+
     console.error(
       "[StudyBuddy] Gemini study-material generation failed",
-      getErrorDetails(error),
+      errorDetails,
     )
+
+    if (isTemporaryAvailabilityError) {
+      return Response.json(
+        {
+          error:
+            "Gemini is temporarily experiencing high demand. Please try again shortly.",
+        },
+        { status: 503 },
+      )
+    }
+
     return Response.json(
       { error: "Failed to generate study materials. Please try again." },
       { status: 500 },
