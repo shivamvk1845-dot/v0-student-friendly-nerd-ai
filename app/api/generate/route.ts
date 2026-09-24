@@ -90,7 +90,7 @@ Create a concise 2-4 sentence summary, a comprehensive 3-5 paragraph explanation
 
     const google = createGoogleGenerativeAI({ apiKey })
     const { output } = await generateText({
-      model: google("gemini-3.7-flash"),
+      model: google("gemini-3.6-flash"),
       system: systemPrompt,
       prompt: `Teach me about: ${topic}`,
       temperature: 0.7,
