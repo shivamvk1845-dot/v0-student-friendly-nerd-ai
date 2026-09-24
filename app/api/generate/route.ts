@@ -45,6 +45,63 @@ function getErrorDetails(error: unknown) {
   }
 }
 
+function isTemporaryAvailabilityError(error: unknown) {
+  const pending: unknown[] = [error]
+  const visited = new Set<object>()
+
+  while (pending.length > 0) {
+    const current = pending.pop()
+    if (typeof current !== "object" || current === null || visited.has(current)) {
+      continue
+    }
+
+    visited.add(current)
+    const details = current as Record<string, unknown>
+    const message = [details.message, details.responseBody]
+      .filter((value): value is string => typeof value === "string")
+      .join(" ")
+
+    const response = details.response
+    const responseStatus =
+      typeof response === "object" && response !== null && "status" in response
+        ? response.status
+        : undefined
+    const status = details.statusCode ?? details.status ?? responseStatus
+
+    if (
+      (typeof status === "number" && [408, 429, 500, 502, 503, 504].includes(status)) ||
+      /high demand|temporarily unavailable|temporary availability|try again later|overloaded|service unavailable/i.test(
+        message,
+      )
+    ) {
+      return true
+    }
+
+    pending.push(details.cause, details.lastError)
+    if (Array.isArray(details.errors)) pending.push(...details.errors)
+  }
+
+  return false
+}
+
+const temporaryAvailabilityMessage =
+  "Gemini is temporarily experiencing high demand. Please try again in a few minutes."
+const generationFailureMessage =
+  "Failed to generate study materials. Please try again."
+
+function generationErrorResponse(error: unknown) {
+  if (isTemporaryAvailabilityError(error)) {
+    return Response.json(
+      { error: temporaryAvailabilityMessage, code: "MODEL_TEMPORARILY_UNAVAILABLE" },
+      { status: 503, headers: { "Retry-After": "30" } },
+    )
+  }
+
+  return Response.json({ error: generationFailureMessage }, { status: 500 })
+}
+
+export const runtime = "nodejs"
+
 export async function POST(req: Request) {
   try {
     const body = await req.json()
@@ -90,10 +147,11 @@ Create a concise 2-4 sentence summary, a comprehensive 3-5 paragraph explanation
 
     const google = createGoogleGenerativeAI({ apiKey })
     const { output } = await generateText({
-      model: google("gemini-3.6-flash"),
+      model: google("gemini-3.5-flash-lite"),
       system: systemPrompt,
       prompt: `Teach me about: ${topic}`,
       temperature: 0.7,
+      maxRetries: 1,
       output: Output.object({ schema: studyMaterialsSchema }),
     })
 
@@ -103,11 +161,6 @@ Create a concise 2-4 sentence summary, a comprehensive 3-5 paragraph explanation
       "[StudyBuddy] Gemini study-material generation failed",
       getErrorDetails(error),
     )
-    return Response.json(
-      { error: "Failed to generate study materials. Please try again." },
-      { status: 500 },
-    )
+    return generationErrorResponse(error)
   }
 }
-
-export const runtime = "nodejs"

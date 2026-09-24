@@ -43,7 +43,12 @@ function StudyApp() {
       })
 
       if (!response.ok) {
-        throw new Error("Failed to generate study materials")
+        const result = await response.json().catch(() => null)
+        throw new Error(
+          typeof result?.error === "string"
+            ? result.error
+            : "Failed to generate study materials",
+        )
       }
 
       const data = await response.json()
