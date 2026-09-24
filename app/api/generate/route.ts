@@ -1,4 +1,5 @@
-import { generateText, gateway, Output } from "ai"
+import { createGoogleGenerativeAI } from "@ai-sdk/google"
+import { generateText, Output } from "ai"
 import { z } from "zod"
 
 const studyMaterialsSchema = z.object({
@@ -18,8 +19,6 @@ const studyMaterialsSchema = z.object({
     }),
   ),
 })
-
-const model = gateway("spacexai/grok-4.1-fast-non-reasoning")
 
 function getErrorDetails(error: unknown) {
   if (!(error instanceof Error)) {
@@ -80,8 +79,18 @@ ${selectedDifficulty}
 
 Create a concise 2-4 sentence summary, a comprehensive 3-5 paragraph explanation, 5-7 key points, 2-4 real-world examples, and 6-10 flashcards. Make the lesson accurate, clear, and appropriate for the selected difficulty.`
 
+    const apiKey = process.env.GEMINI_API_KEY
+    if (!apiKey) {
+      console.error("[StudyBuddy] GEMINI_API_KEY is not configured")
+      return Response.json(
+        { error: "Failed to generate study materials. Please try again." },
+        { status: 500 },
+      )
+    }
+
+    const google = createGoogleGenerativeAI({ apiKey })
     const { output } = await generateText({
-      model,
+      model: google("gemini-3.7-flash"),
       system: systemPrompt,
       prompt: `Teach me about: ${topic}`,
       temperature: 0.7,
@@ -91,7 +100,7 @@ Create a concise 2-4 sentence summary, a comprehensive 3-5 paragraph explanation
     return Response.json(output)
   } catch (error) {
     console.error(
-      "[StudyBuddy] AI Gateway study-material generation failed",
+      "[StudyBuddy] Gemini study-material generation failed",
       getErrorDetails(error),
     )
     return Response.json(
